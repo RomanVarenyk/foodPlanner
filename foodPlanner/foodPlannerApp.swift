@@ -8,7 +8,7 @@
 import SwiftUI
 import SwiftData
 
-@main
+//@main
 struct foodPlannerApp: App {
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
