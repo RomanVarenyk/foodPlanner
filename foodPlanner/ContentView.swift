@@ -33,73 +33,69 @@ struct SavedMealPlan: Identifiable, Codable {
     let id: UUID
     let name: String
     let date: Date
-    let plan: [MealType:[Recipe]]
+    let plan: [MealType:[Recipe?]]
     let servings: Int
 }
 
 // MARK: – ViewModel
 
 final class RecipesViewModel: ObservableObject {
+    // persisted
     @Published var customRecipes: [Recipe] = []
     @Published var removedRecipeIDs: Set<UUID> = []
     @Published var savedMealPlans: [SavedMealPlan] = []
+    // UI state
     @Published var editingRecipe: Recipe? = nil
-    @Published var weeklyPlan: [MealType:[Recipe]] = [:]
+    @Published var weeklyPlan: [MealType:[Recipe?]] = [:]
     @Published var currentServings: Int = 1
 
     let days = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
 
     private let builtIn: [MealType:[Recipe]] = [
         .breakfast: [
-            Recipe(
-                id: UUID(), name: "Oatmeal", mealType: .breakfast, serves: 1,
-                ingredients: [
-                    Ingredient(name: "Rolled oats", quantity: 0.5, unit: "cup"),
-                    Ingredient(name: "Milk",        quantity: 1,   unit: "cup"),
-                    Ingredient(name: "Honey",       quantity: 1,   unit: "tbsp")
-                ],
-                instructions: [
-                    "Combine oats and milk in pot.",
-                    "Cook on medium heat until thick.",
-                    "Stir in honey and serve."
-                ]
-            )
+            Recipe(id: UUID(), name: "Oatmeal", mealType: .breakfast, serves: 1,
+                   ingredients:[
+                     Ingredient(name:"Rolled oats", quantity:0.5, unit:"cup"),
+                     Ingredient(name:"Milk",        quantity:1,   unit:"cup"),
+                     Ingredient(name:"Honey",       quantity:1,   unit:"tbsp")
+                   ],
+                   instructions:[
+                     "Combine oats and milk in pot.",
+                     "Cook on medium heat until thick.",
+                     "Stir in honey and serve."
+                   ])
         ],
         .lunch: [
-            Recipe(
-                id: UUID(), name: "Grilled Chicken Salad", mealType: .lunch, serves: 1,
-                ingredients: [
-                    Ingredient(name: "Chicken breast", quantity: 1, unit: "pc"),
-                    Ingredient(name: "Lettuce",        quantity: 2, unit: "cups"),
-                    Ingredient(name: "Tomato",         quantity: 1, unit: "pc")
-                ],
-                instructions: [
-                    "Grill chicken and slice.",
-                    "Toss with lettuce and tomato.",
-                    "Dress with olive oil and vinegar."
-                ]
-            )
+            Recipe(id: UUID(), name: "Grilled Chicken Salad", mealType: .lunch, serves: 1,
+                   ingredients:[
+                     Ingredient(name:"Chicken breast", quantity:1, unit:"pc"),
+                     Ingredient(name:"Lettuce",        quantity:2, unit:"cups"),
+                     Ingredient(name:"Tomato",         quantity:1, unit:"pc")
+                   ],
+                   instructions:[
+                     "Grill chicken and slice.",
+                     "Toss with lettuce and tomato.",
+                     "Dress with olive oil and vinegar."
+                   ])
         ],
         .dinner: [
-            Recipe(
-                id: UUID(), name: "Chicken Soup", mealType: .dinner, serves: 5,
-                ingredients: [
-                    Ingredient(name: "Onion",         quantity: 1,   unit: "large"),
-                    Ingredient(name: "Potato",        quantity: 1,   unit: "kg"),
-                    Ingredient(name: "Carrots",       quantity: 0.7, unit: "kg"),
-                    Ingredient(name: "Chicken",       quantity: 1,   unit: "kg"),
-                    Ingredient(name: "Bay leaf",      quantity: nil, unit: nil),
-                    Ingredient(name: "Salt + pepper", quantity: nil, unit: nil)
-                ],
-                instructions: [
-                    "Skin potato, onion, carrot",
-                    "Dice onion",
-                    "Cut potato into pieces that are digestible",
-                    "Cut carrots thin",
-                    "Put chicken in pot, cover with water plus 2/3 finger",
-                    "Bring to boil, add ingredients, simmer 40 min until soft"
-                ]
-            )
+            Recipe(id: UUID(), name: "Chicken Soup", mealType: .dinner, serves: 5,
+                   ingredients:[
+                     Ingredient(name:"Onion",         quantity:1,   unit:"large"),
+                     Ingredient(name:"Potato",        quantity:1,   unit:"kg"),
+                     Ingredient(name:"Carrots",       quantity:0.7, unit:"kg"),
+                     Ingredient(name:"Chicken",       quantity:1,   unit:"kg"),
+                     Ingredient(name:"Bay leaf",      quantity:nil, unit:nil),
+                     Ingredient(name:"Salt + pepper", quantity:nil, unit:nil)
+                   ],
+                   instructions:[
+                     "Skin potato, onion, carrot",
+                     "Dice onion",
+                     "Cut potato into pieces that are digestible",
+                     "Cut carrots thin",
+                     "Put chicken in pot, cover with water plus 2/3 finger",
+                     "Bring to boil, add ingredients, simmer 40 min until soft"
+                   ])
         ]
     ]
 
@@ -108,24 +104,38 @@ final class RecipesViewModel: ObservableObject {
         for m in MealType.allCases {
             dict[m] = (dict[m] ?? []).filter { !removedRecipeIDs.contains($0.id) }
         }
-        for m in MealType.allCases { dict[m] = dict[m] ?? [] }
-        for r in customRecipes { dict[r.mealType]?.append(r) }
+        MealType.allCases.forEach { dict[$0] = dict[$0] ?? [] }
+        for r in customRecipes {
+            dict[r.mealType]?.append(r)
+        }
         return dict
     }
 
+    // MARK: – Plan Generation & Mutation
+
     func generatePlan(forServings s: Int) {
         currentServings = s
-        weeklyPlan = [:]
+        var newPlan = [MealType:[Recipe?]]()
         for m in MealType.allCases {
             let list = recipesByType[m]!
-            guard !list.isEmpty else { continue }
+            guard !list.isEmpty else {
+                newPlan[m] = Array(repeating: nil, count: days.count)
+                continue
+            }
             let shuffled = list.shuffled()
-            weeklyPlan[m] = (0..<days.count).map { shuffled[$0 % shuffled.count] }
+            newPlan[m] = (0..<days.count).map { shuffled[$0 % shuffled.count] }
         }
+        weeklyPlan = newPlan
     }
 
+    func removeSlot(meal: MealType, dayIndex: Int) {
+        weeklyPlan[meal]?[dayIndex] = nil
+    }
+
+    // MARK: – Recipe CRUD
+
     func addOrUpdate(recipe: Recipe) {
-        if let i = customRecipes.firstIndex(where: { $0.id == recipe.id }) {
+        if let i = customRecipes.firstIndex(where:{ $0.id == recipe.id }) {
             customRecipes[i] = recipe
         } else {
             customRecipes.append(recipe)
@@ -136,7 +146,7 @@ final class RecipesViewModel: ObservableObject {
     func delete(recipe: Recipe) {
         let list = recipesByType[recipe.mealType]!
         guard list.count > 1 else { return }
-        if customRecipes.contains(where: { $0.id == recipe.id }) {
+        if customRecipes.contains(where:{ $0.id == recipe.id }) {
             customRecipes.removeAll { $0.id == recipe.id }
             saveRecipes()
         } else {
@@ -145,11 +155,23 @@ final class RecipesViewModel: ObservableObject {
         }
     }
 
+    // MARK: – Save & Delete Plans
+
     func saveCurrentPlan(named name: String) {
         let mon = monday(of: Date())
-        let sp = SavedMealPlan(id: UUID(), name: name, date: mon,
-                               plan: weeklyPlan, servings: currentServings)
-        savedMealPlans.append(sp)
+        let plan = SavedMealPlan(
+            id: UUID(),
+            name: name,
+            date: mon,
+            plan: weeklyPlan,
+            servings: currentServings
+        )
+        savedMealPlans.append(plan)
+        savePlans()
+    }
+
+    func removeSavedPlans(at offsets: IndexSet) {
+        savedMealPlans.remove(atOffsets: offsets)
         savePlans()
     }
 
@@ -162,22 +184,23 @@ final class RecipesViewModel: ObservableObject {
     // MARK: – Persistence
 
     private var recipesURL: URL {
-        FileManager.default.urls(for:.documentDirectory,in:.userDomainMask)[0]
+        FileManager.default
+            .urls(for:.documentDirectory,in:.userDomainMask)[0]
             .appendingPathComponent("custom_recipes.json")
     }
     private var removedURL: URL {
-        FileManager.default.urls(for:.documentDirectory,in:.userDomainMask)[0]
+        FileManager.default
+            .urls(for:.documentDirectory,in:.userDomainMask)[0]
             .appendingPathComponent("removed_ids.json")
     }
     private var plansURL: URL {
-        FileManager.default.urls(for:.documentDirectory,in:.userDomainMask)[0]
+        FileManager.default
+            .urls(for:.documentDirectory,in:.userDomainMask)[0]
             .appendingPathComponent("saved_plans.json")
     }
 
     init() {
-        loadRecipes()
-        loadRemoved()
-        loadPlans()
+        loadRecipes(); loadRemoved(); loadPlans()
     }
 
     private func saveRecipes() {
@@ -218,7 +241,7 @@ final class RecipesViewModel: ObservableObject {
     private func monday(of date: Date) -> Date {
         var cal = Calendar.current; cal.firstWeekday = 2
         let comps = cal.dateComponents([.yearForWeekOfYear,.weekOfYear],from:date)
-        return cal.date(from: comps)!
+        return cal.date(from:comps)!
     }
 }
 
@@ -240,14 +263,14 @@ extension Binding where Value == String? {
 extension View {
     func fullWidthStyle() -> some View {
         self.font(.headline)
-            .frame(maxWidth: .infinity, minHeight: 44)
+            .frame(maxWidth:.infinity, minHeight:44)
             .background(
-                LinearGradient(gradient: .init(colors: [.blue,.purple]),
-                               startPoint: .leading,
-                               endPoint: .trailing))
+                LinearGradient(gradient: .init(colors:[.blue,.purple]),
+                               startPoint:.leading,endPoint:.trailing)
+            )
             .foregroundColor(.white)
             .cornerRadius(10)
-            .shadow(color: .black.opacity(0.2), radius: 4, x: 0, y: 2)
+            .shadow(color:.black.opacity(0.2),radius:4,x:0,y:2)
     }
 }
 
@@ -263,7 +286,7 @@ struct MealPlannerApp: App {
     }
 }
 
-// MARK: – ContentView
+// MARK: – ContentView (Home Screen)
 
 struct ContentView: View {
     @EnvironmentObject var vm: RecipesViewModel
@@ -277,9 +300,8 @@ struct ContentView: View {
 
     var body: some View {
         NavigationView {
-            VStack(spacing: 16) {
-                Stepper("Servings: \(servings)",
-                        value: $servings, in: 1...20)
+            VStack(spacing:16) {
+                Stepper("Servings: \(servings)", value:$servings, in:1...20)
                     .padding(.horizontal)
 
                 Button("Generate Weekly Plan") {
@@ -288,8 +310,7 @@ struct ContentView: View {
                 }.fullWidthStyle()
 
                 Button("Add Recipe") {
-                    vm.editingRecipe = nil
-                    showAdd = true
+                    vm.editingRecipe = nil; showAdd = true
                 }.fullWidthStyle()
 
                 Button("Mass Recipe Add") {
@@ -318,7 +339,7 @@ struct ContentView: View {
                         showSave: true
                     ).environmentObject(vm),
                     isActive: $showPlan
-                ) { EmptyView() }
+                ){ EmptyView() }
                 .hidden()
             )
             .sheet(isPresented: $showAdd) {
@@ -330,8 +351,7 @@ struct ContentView: View {
                     vm.editingRecipe = rec
                     showMass = false
                     showAdd  = true
-                }
-                .environmentObject(vm)
+                }.environmentObject(vm)
             }
             .sheet(isPresented: $showSaved) {
                 SavedPlansView().environmentObject(vm)
@@ -367,7 +387,7 @@ struct MassRecipeAddView: View {
             .padding()
             .navigationTitle("Mass Recipe Add")
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
+                ToolbarItem(placement:.cancellationAction) {
                     Button("Cancel"){ dismiss() }
                 }
             }
@@ -375,38 +395,38 @@ struct MassRecipeAddView: View {
     }
 
     private func parseRecipe(_ text: String) -> Recipe {
-        let lines = text.split(whereSeparator: \.isNewline).map(String.init)
+        let lines = text.split(whereSeparator:\.isNewline).map(String.init)
         var idx = 0
         let name = lines[safe: idx] ?? ""; idx += 1
 
         var ingredients: [Ingredient] = []
-        if lines[safe: idx]?.lowercased().starts(with: "ingredients") == true {
+        if lines[safe: idx]?.lowercased().starts(with:"ingredients") == true {
             idx += 1
             while idx < lines.count,
-                  !lines[idx].lowercased().starts(with: "instructions") {
-                let tokens = lines[idx].split(separator: " ").map(String.init)
+                  !lines[idx].lowercased().starts(with:"instructions") {
+                let tokens = lines[idx].split(separator:" ").map(String.init)
                 var qty: Double? = nil
-                var unit: String?   = nil
-                var nametoks: [String] = []
+                var unit: String? = nil
+                var nameTokens: [String] = []
                 for t in tokens {
-                    let tok = t.trimmingCharacters(in: .punctuationCharacters)
+                    let tok = t.trimmingCharacters(in:.punctuationCharacters)
                     let digs = tok.prefix { "0123456789.".contains($0) }
                     if let q = Double(digs), !digs.isEmpty {
                         qty = q
-                        let suf = tok.suffix(from: digs.endIndex)
+                        let suf = tok.suffix(from:digs.endIndex)
                         unit = suf.isEmpty ? nil : String(suf)
                     } else {
-                        nametoks.append(t)
+                        nameTokens.append(t)
                     }
                 }
-                let ingName = nametoks.joined(separator:" ")
-                ingredients.append(Ingredient(name: ingName, quantity: qty, unit: unit))
+                let ingName = nameTokens.joined(separator:" ")
+                ingredients.append(Ingredient(name:ingName, quantity:qty, unit:unit))
                 idx += 1
             }
         }
 
         var instructions: [String] = []
-        if lines[safe: idx]?.lowercased().starts(with: "instructions") == true {
+        if lines[safe: idx]?.lowercased().starts(with:"instructions") == true {
             idx += 1
             while idx < lines.count, Double(lines[idx]) == nil {
                 instructions.append(lines[idx]); idx += 1
@@ -414,6 +434,7 @@ struct MassRecipeAddView: View {
         }
 
         let serves = Int(lines.last ?? "") ?? 1
+
         return Recipe(
             id: UUID(),
             name: name,
@@ -441,9 +462,9 @@ struct AddRecipeView: View {
     init(recipe: Binding<Recipe?>) {
         self._recipe = recipe
         let ex = recipe.wrappedValue
-        _name        = State(initialValue: ex?.name       ?? "")
-        _mealType    = State(initialValue: ex?.mealType   ?? .breakfast)
-        _serves      = State(initialValue: ex?.serves     ?? 1)
+        _name        = State(initialValue: ex?.name     ?? "")
+        _mealType    = State(initialValue: ex?.mealType ?? .breakfast)
+        _serves      = State(initialValue: ex?.serves   ?? 1)
         _ingredients = State(initialValue:
             ex?.ingredients.map(IngredientField.init)
             ?? Array(repeating: IngredientField(), count:3)
@@ -457,8 +478,8 @@ struct AddRecipeView: View {
         NavigationView {
             Form {
                 Section("Recipe Info") {
-                    TextField("Name", text: $name)
-                    Picker("Meal Type", selection: $mealType) {
+                    TextField("Name", text:$name)
+                    Picker("Meal Type", selection:$mealType) {
                         ForEach(MealType.allCases, id:\.self) {
                             Text($0.rawValue)
                         }
@@ -467,7 +488,7 @@ struct AddRecipeView: View {
                 }
                 Section("Ingredients") {
                     ForEach(ingredients.indices, id:\.self) { i in
-                        IngredientRow(field: $ingredients[i])
+                        IngredientRow(field:$ingredients[i])
                     }
                     Button("Add Ingredient") {
                         ingredients.append(IngredientField())
@@ -511,11 +532,13 @@ struct AddRecipeView: View {
         var unit: String?     = nil
 
         init() {}
-        init(from ing:Ingredient){
-            name=ing.name; quantity=ing.quantity; unit=ing.unit
+        init(from ing:Ingredient) {
+            name     = ing.name
+            quantity = ing.quantity
+            unit     = ing.unit
         }
         var toIngredient: Ingredient {
-            Ingredient(name: name, quantity: quantity, unit: unit)
+            Ingredient(name:name, quantity:quantity, unit:unit)
         }
     }
 
@@ -523,12 +546,11 @@ struct AddRecipeView: View {
         @Binding var field: IngredientField
         var body: some View {
             HStack {
-                TextField("Name", text: $field.name)
-                TextField("Qty", value: $field.quantity,
-                          formatter: NumberFormatter())
-                    .frame(width:50)
-                    .keyboardType(.decimalPad)
-                TextField("Unit", text: $field.unit.bound)
+                TextField("Name", text:$field.name)
+                TextField("Qty", value:$field.quantity,
+                          formatter:NumberFormatter())
+                    .frame(width:50).keyboardType(.decimalPad)
+                TextField("Unit", text:$field.unit.bound)
                     .frame(width:60)
             }
         }
@@ -547,19 +569,24 @@ struct SavedPlansView: View {
                 ForEach(vm.savedMealPlans) { plan in
                     NavigationLink(plan.name) {
                         PlanTabsView(
-                            weeklyPlan: plan.plan,
-                            servings: plan.servings,
-                            days: vm.days,
-                            title: plan.name,
-                            showSave: false
+                            weeklyPlan:plan.plan,
+                            servings:plan.servings,
+                            days:vm.days,
+                            title:plan.name,
+                            showSave:false
                         ).environmentObject(vm)
                     }
                 }
+                .onDelete(perform: vm.removeSavedPlans)
             }
+            .listStyle(.insetGrouped)
             .navigationTitle("Saved Meal Plans")
             .toolbar {
-                ToolbarItem(placement:.cancellationAction){
+                ToolbarItem(placement:.cancellationAction) {
                     Button("Done"){ dismiss() }
+                }
+                ToolbarItem(placement:.navigationBarTrailing) {
+                    EditButton()
                 }
             }
         }
@@ -602,10 +629,7 @@ struct RecipesListView: View {
                                 alertMsg = "Cannot delete the last recipe in \(meal.rawValue)."
                                 showAlert = true
                             } else {
-                                idxSet.forEach { i in
-                                    let rec = list[i]
-                                    vm.delete(recipe: rec)
-                                }
+                                idxSet.forEach { vm.delete(recipe: list[$0]) }
                             }
                         }
                     }
@@ -614,19 +638,19 @@ struct RecipesListView: View {
             .listStyle(.insetGrouped)
             .navigationTitle("All Recipes")
             .toolbar {
-                ToolbarItem(placement:.cancellationAction){
+                ToolbarItem(placement:.cancellationAction) {
                     Button("Done"){ dismiss() }
                 }
-                ToolbarItem(placement:.navigationBarTrailing){
+                ToolbarItem(placement:.navigationBarTrailing) {
                     EditButton()
                 }
             }
             .sheet(isPresented: $showEdit) {
-                AddRecipeView(recipe: $vm.editingRecipe)
+                AddRecipeView(recipe:$vm.editingRecipe)
                     .environmentObject(vm)
             }
-            .alert(alertMsg, isPresented: $showAlert) {
-                Button("OK", role: .cancel) {}
+            .alert(alertMsg, isPresented:$showAlert) {
+                Button("OK", role:.cancel){}
             }
         }
     }
@@ -639,24 +663,24 @@ struct SavePlanView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var name: String
 
-    init(defaultName: String) {
-        _name = State(initialValue: defaultName)
+    init(defaultName:String) {
+        _name = State(initialValue:defaultName)
     }
 
     var body: some View {
         NavigationView {
             Form {
                 Section {
-                    TextField("Plan Name", text: $name)
+                    TextField("Plan Name", text:$name)
                 }
             }
             .navigationTitle("Save Plan")
             .toolbar {
-                ToolbarItem(placement:.cancellationAction){
+                ToolbarItem(placement:.cancellationAction) {
                     Button("Cancel"){ dismiss() }
                 }
-                ToolbarItem(placement:.confirmationAction){
-                    Button("Save"){
+                ToolbarItem(placement:.confirmationAction) {
+                    Button("Save") {
                         vm.saveCurrentPlan(named: name)
                         dismiss()
                     }
@@ -666,7 +690,7 @@ struct SavePlanView: View {
     }
 }
 
-// MARK: – PlanTabsView
+// MARK: – PlanSlot (Identifiable)
 
 struct PlanSlot: Identifiable {
     let id = UUID()
@@ -674,10 +698,12 @@ struct PlanSlot: Identifiable {
     let dayIndex: Int
 }
 
+// MARK: – PlanTabsView
+
 struct PlanTabsView: View {
     @EnvironmentObject var vm: RecipesViewModel
 
-    let weeklyPlan: [MealType:[Recipe]]
+    let weeklyPlan: [MealType:[Recipe?]]
     let servings: Int
     let days: [String]
     let title: String
@@ -689,10 +715,11 @@ struct PlanTabsView: View {
     private var shopping: [Ingredient:Double] {
         var dict = [Ingredient:Double]()
         for meals in weeklyPlan.values {
-            for r in meals {
+            for rOpt in meals {
+                guard let r = rOpt else { continue }
                 let factor = Double(servings)/Double(r.serves)
                 for ing in r.ingredients {
-                    dict[ing, default:0] += (ing.quantity ?? 1) * factor
+                    dict[ing, default:0] += (ing.quantity ?? 1)*factor
                 }
             }
         }
@@ -701,6 +728,7 @@ struct PlanTabsView: View {
 
     var body: some View {
         TabView {
+            // MARK: – Menu Tab
             ScrollView {
                 VStack(spacing:16) {
                     ForEach(days.indices, id:\.self) { i in
@@ -708,21 +736,29 @@ struct PlanTabsView: View {
                             Text(days[i])
                                 .font(.title2).bold()
                             ForEach(MealType.allCases, id:\.self) { m in
-                                if let r = weeklyPlan[m]?[i] {
-                                    Button {
-                                        editingSlot = PlanSlot(meal:m, dayIndex:i)
-                                    } label: {
-                                        HStack {
-                                            Text(m.rawValue)
-                                                .fontWeight(.semibold)
-                                            Spacer()
-                                            Text(r.name)
-                                                .foregroundColor(.secondary)
-                                        }
-                                        .padding(.vertical,6)
+                                HStack {
+                                    if let r = weeklyPlan[m]?[i] {
+                                        Text(r.name)
+                                            .foregroundColor(.primary)
+                                    } else {
+                                        Text("–")
+                                            .foregroundColor(.secondary)
                                     }
-                                    Divider()
+                                    Spacer()
+                                    Menu {
+                                        Button("Change…") {
+                                            editingSlot = PlanSlot(meal:m, dayIndex:i)
+                                        }
+                                        Button("Remove", role:.destructive) {
+                                            vm.removeSlot(meal:m, dayIndex:i)
+                                        }
+                                    } label: {
+                                        Image(systemName:"ellipsis.circle")
+                                            .font(.title3)
+                                    }
                                 }
+                                .padding(.vertical,6)
+                                Divider()
                             }
                         }
                         .padding()
@@ -731,15 +767,20 @@ struct PlanTabsView: View {
                         .shadow(color:.black.opacity(0.1),radius:4,x:0,y:2)
                     }
                     if showSave {
-                        Button("Save Plan"){ showSaveSheet=true }
-                            .fullWidthStyle()
-                            .padding(.top,16)
+                        Button("Save Plan") {
+                            showSaveSheet = true
+                        }
+                        .fullWidthStyle()
+                        .padding(.top,16)
                     }
                 }
                 .padding()
             }
-            .tabItem{ Label("Menu", systemImage:"list.bullet") }
+            .tabItem {
+                Label("Menu", systemImage:"list.bullet")
+            }
 
+            // MARK: – Ingredients Tab
             List {
                 Section(header: Text("Ingredients for \(servings) servings")) {
                     ForEach(shopping.sorted(by:{ $0.key.name < $1.key.name }), id:\.key) { ing, tot in
@@ -752,14 +793,16 @@ struct PlanTabsView: View {
                 }
             }
             .listStyle(.insetGrouped)
-            .tabItem{ Label("Ingredients", systemImage:"cart") }
+            .tabItem {
+                Label("Ingredients", systemImage:"cart")
+            }
         }
         .navigationTitle(title)
-        .sheet(item: $editingSlot) { slot in
-            EditSlotView(meal: slot.meal, dayIndex: slot.dayIndex)
+        .sheet(item:$editingSlot) { slot in
+            EditSlotView(meal:slot.meal, dayIndex:slot.dayIndex)
                 .environmentObject(vm)
         }
-        .sheet(isPresented: $showSaveSheet) {
+        .sheet(isPresented:$showSaveSheet) {
             SavePlanView(defaultName: vm.defaultPlanName())
                 .environmentObject(vm)
         }
@@ -788,10 +831,11 @@ struct EditSlotView: View {
                     }
                 }
             }
+            .listStyle(.insetGrouped)
             .navigationTitle("Choose Recipe")
             .toolbar {
                 ToolbarItem(placement:.cancellationAction) {
-                    Button("Cancel"){ dismiss() }
+                    Button("Cancel") { dismiss() }
                 }
             }
         }
